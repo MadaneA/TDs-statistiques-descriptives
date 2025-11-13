@@ -1,0 +1,96 @@
+def extraire_fichiers_zip(repertoire_source, repertoire_destination):
+    """
+    Extrait tous les fichiers zip du répertoire source vers le répertoire de destination.
+
+    Paramètres:
+    - repertoire_source (str): Le répertoire dans lequel rechercher les fichiers zip.
+    - repertoire_destination (str): Le répertoire où les fichiers zip doivent être extraits.
+
+    Retourne:
+    - None
+    """
+
+    # Assurez-vous que le répertoire de destination existe; sinon, créez-le
+    if not os.path.exists(repertoire_destination):
+        os.makedirs(repertoire_destination)
+
+    # Boucle à travers tous les fichiers dans le répertoire source
+    for nom_fichier in os.listdir(repertoire_source):
+        chemin_fichier = os.path.join(repertoire_source, nom_fichier)
+
+        # Vérifiez si le fichier actuel est un fichier zip
+        if zipfile.is_zipfile(chemin_fichier):
+            # Ouvrez le fichier zip et faites extraire son contenu dans le répertoire de destination
+            with zipfile.ZipFile(chemin_fichier) as fichier_zip:
+                fichier_zip.extractall(repertoire_destination)  # Extrait tous les fichiers dans le répertoire de destination
+                print(f"{nom_fichier} a été extrait vers {repertoire_destination}.")
+
+# Définir le répertoire où les fichiers zip sont stockés
+repertoire_source = 'data/data_zip'
+
+# Définir le répertoire où les fichiers doivent être extraits
+repertoire_destination = 'data/data_extracted'
+
+# Print la liste des fichiers dans le répertoire source
+print("Fichiers dans repertoire_source:", os.listdir(repertoire_source))
+
+# Appelez la fonction pour extraire tous les fichiers zip du source vers le répertoire de destination
+extraire_fichiers_zip(repertoire_source, repertoire_destination)
+
+# Print la liste des fichiers dans le répertoire de destination après extraction
+print("Fichiers dans repertoire_destination après extraction:", os.listdir(repertoire_destination))
+
+
+
+
+######
+def lire_hdf_dask(nom_fichier, repertoire='data/data_extracted'):
+    """
+    Charge un fichier HDF5 dans un DataFrame Dask.
+
+    Si le fichier HDF5 n'est pas partitionnable et qu'il n'y a pas déjà une version partitionnée,
+    une version partitionnée sera créée dans le répertoire 'data/data_dask'.
+
+    Paramètres:
+    - nom_fichier (str): Nom du fichier HDF5.
+    - repertoire (str, facultatif): Répertoire contenant le fichier HDF5. Par défaut, 'data/data_extracted'.
+
+    Retour:
+    - ddf: DataFrame Dask
+    """
+    repertoire_dask = 'data/data_dask'
+
+    # Vérifiez si le répertoire dask existe; sinon, créez-le
+    if not os.path.exists(repertoire_dask):
+        os.makedirs(repertoire_dask)
+
+    fichier_partitionne = os.path.join(repertoire_dask, f"{nom_fichier[:-3]}_dask.h5")
+
+    # Vérifiez si une version partitionnée du fichier existe
+    if os.path.exists(fichier_partitionne):
+        return dd.read_hdf(fichier_partitionne, '*')
+
+    chemin_fichier = os.path.join(repertoire, nom_fichier)
+
+    try:
+        return dd.read_hdf(chemin_fichier, '*')
+    except TypeError:
+        with pd.HDFStore(chemin_fichier) as store:
+            keys_store = store.keys()
+            if not keys_store:
+                raise ValueError(f"Aucun jeu de données trouvé dans HDFStore: {nom_fichier}")
+
+            print("Ce HDFStore n'est pas partitionnable et ne peut être utilisé de manière monolithique qu'avec pandas.")
+            print(f"Création d'un nouveau fichier de données: '{nom_fichier[:-3]}_dask.h5'")
+
+            # Créez une version partitionnée du fichier
+            with pd.HDFStore(fichier_partitionne, mode='w') as h:
+                for key in keys_store:
+                    h.put(key, store[key], format='table')
+            print(f"Lecture du fichier de données: '{nom_fichier[:-3]}_dask.h5'")
+            return dd.read_hdf(fichier_partitionne, '*')
+
+# Testez la fonction
+nom_du_fichier = 'Aircraft_01.h5'
+ddf = lire_hdf_dask(nom_du_fichier)
+print(f"DataFrame Dask du fichier {nom_du_fichier} a été chargé dans 'ddf'.")
